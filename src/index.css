@@ -4,19 +4,19 @@
   --font-display: "Bricolage Grotesque", system-ui, sans-serif;
   --font-sans: "DM Sans", system-ui, sans-serif;
 
-  --color-ink: #251d31;
-  --color-paper: #fff9fc;
-  --color-sun: #ffe8f1;
-  --color-sky: #f8f4ff;
-  --color-blush: #fce8f1;
-  --color-mint: #eff8f4;
-  --color-lilac: #eee8f8;
-  --color-coral: #db4f91;
-  --color-purple-tint: #ffffff;
-  --color-purple-soft: #fff1f7;
-  --color-purple-mid: #e7d8ec;
-  --color-purple-vivid: #a855f7;
-  --color-purple-deep: #6d28d9;
+  --color-ink: #2d2830;
+  --color-paper: #fbf8f3;
+  --color-sun: #f5e9e5;
+  --color-sky: #f1f1ed;
+  --color-blush: #f8e9e8;
+  --color-mint: #edf2eb;
+  --color-lilac: #f0edf3;
+  --color-coral: #b85e78;
+  --color-purple-tint: #fffefc;
+  --color-purple-soft: #f5f0f1;
+  --color-purple-mid: #e5dadd;
+  --color-purple-vivid: #8a536b;
+  --color-purple-deep: #55364f;
 }
 
 html {
@@ -31,33 +31,16 @@ body {
 }
 
 .hero-grid {
-  background:
-    radial-gradient(circle at 82% 14%, rgba(219, 79, 145, 0.26), transparent 24rem),
-    radial-gradient(circle at 12% 88%, rgba(168, 85, 247, 0.17), transparent 20rem),
-    linear-gradient(135deg, #fff8fb 0%, #ffeaf3 48%, #f5efff 100%);
+  background: linear-gradient(120deg, #fbf8f3 0%, #f8f0ed 100%);
 }
 
 ::selection {
-  background: #f3b8d2;
-  color: #251d31;
-}
-
-.floaty {
-  animation: floaty 4.8s ease-in-out infinite;
-}
-
-.floaty-slow {
-  animation: floaty 6s ease-in-out infinite;
-  animation-delay: 0.8s;
+  background: #e8c9d1;
+  color: #2d2830;
 }
 
 .pop-in {
   animation: pop-in 0.45s both ease-out;
-}
-
-@keyframes floaty {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-9px) rotate(5deg); }
 }
 
 @keyframes pop-in {

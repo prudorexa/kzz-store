@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AdminDashboard from "../components/AdminDashboard.jsx";
+import PublicPhotoImporter from "../components/PublicPhotoImporter.jsx";
+import ProductPrice from "../components/ProductPrice.jsx";
 import { useProducts } from "../hooks/useProducts.js";
 import { saveCatalog } from "../lib/catalog.js";
 import { formatKSh } from "../lib/format.js";
+import { nairobiDateTimeToIso, toNairobiDateTimeInput } from "../lib/offerSchedule.js";
+import { PRODUCT_GROUPS } from "../lib/productGroups.js";
 import { getSafeTrackingUrl, ORDER_FULFILLMENT_STATUSES } from "../lib/orderStatus.js";
 import {
   isSupabaseConfigured,
@@ -17,7 +21,12 @@ function createDraft(product) {
   return product
     ? {
         ...product,
+        productGroup: product.productGroup || product.product_group || "Other",
         sizes: product.sizes.join(", "),
+        price: String(product.offerPrice ?? product.price),
+        previousPrice: product.compareAtPrice == null ? "" : String(product.compareAtPrice),
+        offerStartsAt: toNairobiDateTimeInput(product.offerStartsAt),
+        offerEndsAt: toNairobiDateTimeInput(product.offerEndsAt),
         colors: (product.colors || []).join(", "),
         cost: product.cost == null ? "" : String(product.cost),
         imagePath: product.image_path ?? null,
@@ -34,7 +43,11 @@ function createDraft(product) {
     : {
         name: "",
         category: "Girls",
+        productGroup: "Sets",
         price: "",
+        previousPrice: "",
+        offerStartsAt: "",
+        offerEndsAt: "",
         cost: "",
         sizes: "",
         colors: "",
@@ -93,6 +106,7 @@ export default function Admin() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [showPhotoImporter, setShowPhotoImporter] = useState(false);
   const [dashboardDays, setDashboardDays] = useState(30);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -222,6 +236,100 @@ export default function Admin() {
     }
   }
 
+  async function importPublicPhotos(product, onProgress) {
+    if (!isSupabaseConfigured) {
+      const newProduct = {
+        id: `public-${product.photos[0].id}`,
+        name: product.name,
+        category: product.category,
+        productGroup: product.productGroup,
+        price: product.price,
+        originalPrice: product.originalPrice,
+        offerPrice: product.offerPrice ?? product.price,
+        compareAtPrice: product.compareAtPrice ?? product.originalPrice,
+        offerStartsAt: product.offerStartsAt ?? null,
+        offerEndsAt: product.offerEndsAt ?? null,
+        cost: null,
+        sizes: product.sizes,
+        colors: [],
+        stock: product.stock,
+        image: product.photos[0].url,
+        emoji: "👕",
+        tone: "bg-lilac",
+        description: "",
+        careInstructions: "",
+        sizeGuide: "",
+        gallery: product.photos.slice(1).map((photo) => photo.url),
+      };
+      if (!updateCatalog([newProduct, ...products])) {
+        return {
+          importedIds: [],
+          failures: [{ id: product.photos[0].id, name: product.name, message: "Could not save this browser catalog." }],
+        };
+      }
+      onProgress(product.photos.length);
+      return { importedIds: product.photos.map((photo) => photo.id), failures: [] };
+    }
+
+    const uploadedPaths = [];
+    try {
+      for (const [index, photo] of product.photos.entries()) {
+        try {
+          const response = await fetch(photo.url);
+          if (!response.ok) throw new Error(`Could not read ${photo.name}.`);
+          const source = await response.blob();
+          const file = new File([source], photo.name, { type: source.type || "image/jpeg" });
+          const prepared = await prepareImage(file);
+          const imageBlob = await (await fetch(prepared)).blob();
+          const path = `${product.category.toLowerCase()}/${crypto.randomUUID()}.jpg`;
+          const { error: uploadError } = await supabase.storage
+            .from("product-images")
+            .upload(path, imageBlob, { contentType: "image/jpeg", upsert: false });
+          if (uploadError) throw uploadError;
+          uploadedPaths.push(path);
+        } finally {
+          onProgress(index + 1);
+        }
+      }
+
+      const row = {
+        name: product.name,
+        category: product.category,
+        product_group: product.productGroup,
+        price_ksh: product.price,
+        compare_at_price_ksh: product.originalPrice,
+        offer_starts_at: product.offerStartsAt ?? null,
+        offer_ends_at: product.offerEndsAt ?? null,
+        cost_ksh: null,
+        sizes: product.sizes,
+        colors: [],
+        stock: product.stock,
+        image_path: uploadedPaths[0],
+        emoji: "👕",
+        tone: "bg-lilac",
+        description: "",
+        care_instructions: "",
+        size_guide: "",
+        gallery_paths: uploadedPaths.slice(1),
+        active: true,
+      };
+      const { error: saveError } = await supabase.from("products").insert(row);
+      if (saveError) throw saveError;
+      notifyProductsUpdated();
+      return { importedIds: product.photos.map((photo) => photo.id), failures: [] };
+    } catch (importError) {
+      let message = importError.message || "Could not save this product.";
+      if (uploadedPaths.length) {
+        const { error: cleanupError } = await supabase.storage.from("product-images").remove(uploadedPaths);
+        if (cleanupError) message += ` Cleanup failed: ${cleanupError.message}`;
+      }
+      return {
+        importedIds: [],
+        failures: [{ id: product.photos[0].id, name: product.name, message }],
+      };
+    }
+  }
+
   async function submitProduct(event) {
     event.preventDefault();
     setSaving(true);
@@ -231,7 +339,13 @@ export default function Admin() {
       ...(draft.id !== undefined ? { id: draft.id } : { id: `local-${Date.now()}` }),
       name: String(form.get("name")).trim(),
       category: String(form.get("category")),
+      productGroup: String(form.get("productGroup")),
       price: Number(form.get("price")),
+      originalPrice: String(form.get("previousPrice") ?? "").trim() === "" ? null : Number(form.get("previousPrice")),
+      offerPrice: Number(form.get("price")),
+      compareAtPrice: String(form.get("previousPrice") ?? "").trim() === "" ? null : Number(form.get("previousPrice")),
+      offerStartsAt: nairobiDateTimeToIso(String(form.get("offerStartsAt") ?? "")),
+      offerEndsAt: nairobiDateTimeToIso(String(form.get("offerEndsAt") ?? "")),
       cost: String(form.get("cost") ?? "").trim() === "" ? null : Number(form.get("cost")),
       sizes: String(form.get("sizes")).split(",").map((size) => size.trim()).filter(Boolean),
       colors: [...new Set(String(form.get("colors") || "").split(",").map((color) => color.trim()).filter(Boolean))],
@@ -244,6 +358,22 @@ export default function Admin() {
       sizeGuide: String(form.get("sizeGuide") || "").trim(),
       gallery: draft.gallery || [],
     };
+
+    if (nextProduct.originalPrice != null && nextProduct.originalPrice <= nextProduct.price) {
+      setError("Previous price must be greater than the current price.");
+      setSaving(false);
+      return;
+    }
+    if (
+      (form.get("offerStartsAt") && !nextProduct.offerStartsAt) ||
+      (form.get("offerEndsAt") && !nextProduct.offerEndsAt) ||
+      (nextProduct.offerStartsAt && nextProduct.offerEndsAt &&
+        Date.parse(nextProduct.offerStartsAt) >= Date.parse(nextProduct.offerEndsAt))
+    ) {
+      setError("Enter valid offer dates and make sure the end is after the start.");
+      setSaving(false);
+      return;
+    }
 
     if (isSupabaseConfigured) {
       let uploadedPath = null;
@@ -280,7 +410,11 @@ export default function Admin() {
         const row = {
           name: nextProduct.name,
           category: nextProduct.category,
+          product_group: nextProduct.productGroup,
           price_ksh: nextProduct.price,
+          compare_at_price_ksh: nextProduct.originalPrice,
+          offer_starts_at: nextProduct.offerStartsAt,
+          offer_ends_at: nextProduct.offerEndsAt,
           cost_ksh: nextProduct.cost,
           sizes: nextProduct.sizes,
           colors: nextProduct.colors,
@@ -562,14 +696,24 @@ export default function Admin() {
             </h1>
           </div>
           {activeTab === "products" && (
-            <button
-              type="button"
-              onClick={() => { setError(""); setDraft(createDraft()); }}
-              disabled={loading}
-              className="rounded-full bg-ink px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-coral disabled:cursor-wait disabled:opacity-50"
-            >
-              + Add a product
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => { setError(""); setShowPhotoImporter(true); }}
+                disabled={loading}
+                className="rounded-full border border-ink/15 px-5 py-3 text-sm font-bold transition-colors hover:bg-lilac/60 disabled:cursor-wait disabled:opacity-50"
+              >
+                Bulk import public photos
+              </button>
+              <button
+                type="button"
+                onClick={() => { setError(""); setDraft(createDraft()); }}
+                disabled={loading}
+                className="rounded-full bg-ink px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-coral disabled:cursor-wait disabled:opacity-50"
+              >
+                + Add a product
+              </button>
+            </div>
           )}
         </div>
 
@@ -660,9 +804,15 @@ export default function Admin() {
                       <p className="text-sm text-ink/55">{product.sizes.join(" · ")}</p>
                     </div>
                   </div>
-                  <p className="text-sm text-ink/70">{product.category}</p>
+                  <p className="text-sm text-ink/70">{product.category} · {product.productGroup || "Other"}</p>
                   <div>
-                    <p className="text-sm font-bold">{formatKSh(product.price)}</p>
+                    <ProductPrice
+                      price={product.price}
+                      originalPrice={product.originalPrice}
+                      className="flex-col items-start"
+                      currentClassName="text-sm"
+                      previousClassName="text-xs"
+                    />
                     <p className={`text-xs ${product.stock > 0 ? "text-ink/55" : "font-bold text-coral"}`}>
                       {product.stock > 0 ? `${product.stock} in stock` : "Sold out"}
                     </p>
@@ -827,6 +977,13 @@ export default function Admin() {
         )}
       </main>
 
+      {showPhotoImporter && (
+        <PublicPhotoImporter
+          onClose={() => setShowPhotoImporter(false)}
+          onImport={importPublicPhotos}
+        />
+      )}
+
       {draft && (
         <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-ink/35 p-4">
           <form
@@ -857,8 +1014,29 @@ export default function Admin() {
                 </select>
               </label>
               <label className="mb-4 block text-sm font-bold">
-                Price (KSh)
+                Clothing group
+                <select name="productGroup" value={draft.productGroup} onChange={(event) => setDraft({ ...draft, productGroup: event.target.value })} className="mt-1.5 w-full rounded-xl border border-ink/15 bg-purple-soft px-4 py-3 font-normal">
+                  {PRODUCT_GROUPS.map((group) => <option key={group}>{group}</option>)}
+                </select>
+              </label>
+              <label className="mb-4 block text-sm font-bold">
+                {draft.previousPrice ? "Offer price (KSh)" : "Current price (KSh)"}
                 <input name="price" type="number" min="0" step="1" required value={draft.price} onChange={(event) => setDraft({ ...draft, price: event.target.value })} className="mt-1.5 w-full rounded-xl border border-purple-mid/50 bg-purple-soft px-4 py-3 font-normal" />
+              </label>
+              <label className="mb-4 block text-sm font-bold">
+                Previous price (KSh, optional)
+                <input name="previousPrice" type="number" min={Number(draft.price) + 1} step="1" value={draft.previousPrice} onChange={(event) => setDraft({ ...draft, previousPrice: event.target.value })} className="mt-1.5 w-full rounded-xl border border-purple-mid/50 bg-purple-soft px-4 py-3 font-normal" placeholder="Leave blank when not on offer" />
+                <span className="mt-1 block text-xs font-normal text-ink/55">Regular price shown outside the offer window.</span>
+              </label>
+              <label className="mb-4 block text-sm font-bold">
+                Offer starts (EAT, optional)
+                <input name="offerStartsAt" type="datetime-local" value={draft.offerStartsAt || ""} disabled={!draft.previousPrice} onChange={(event) => setDraft({ ...draft, offerStartsAt: event.target.value })} className="mt-1.5 w-full rounded-xl border border-purple-mid/50 bg-purple-soft px-4 py-3 font-normal disabled:opacity-50" />
+                <span className="mt-1 block text-xs font-normal text-ink/55">Leave blank to start immediately.</span>
+              </label>
+              <label className="mb-4 block text-sm font-bold">
+                Offer ends (EAT, optional)
+                <input name="offerEndsAt" type="datetime-local" value={draft.offerEndsAt || ""} disabled={!draft.previousPrice} onChange={(event) => setDraft({ ...draft, offerEndsAt: event.target.value })} className="mt-1.5 w-full rounded-xl border border-purple-mid/50 bg-purple-soft px-4 py-3 font-normal disabled:opacity-50" />
+                <span className="mt-1 block text-xs font-normal text-ink/55">Leave blank for no expiry.</span>
               </label>
               <label className="mb-4 block text-sm font-bold">
                 Product cost (KSh)

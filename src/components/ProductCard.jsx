@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCart } from "../context/CartContext.jsx";
 import { useWishlist } from "../context/WishlistContext.jsx";
 import { Link } from "react-router-dom";
-import { formatKSh } from "../lib/format.js";
+import ProductPrice from "./ProductPrice.jsx";
 
 export default function ProductCard({ product, index = 0 }) {
   const { addItem } = useCart();
@@ -28,9 +28,9 @@ export default function ProductCard({ product, index = 0 }) {
   return (
     <article
       style={{ animationDelay: `${Math.min(index * 70, 420)}ms` }}
-      className="pop-in group flex flex-col overflow-hidden rounded-[1.5rem] border border-[#eaddea] bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(219,79,145,0.12)]"
+      className="pop-in group flex flex-col overflow-hidden rounded-2xl border border-purple-mid/70 bg-purple-tint transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_38px_rgba(45,40,48,0.10)]"
     >
-      <div className={`relative grid aspect-[4/4.2] place-items-center overflow-hidden ${product.tone || "bg-sky"}`}>
+      <div className={`relative grid aspect-[4/5] place-items-center overflow-hidden ${product.tone || "bg-sky"}`}>
         {showImage ? (
           <Link to={`/product/${product.id}`} aria-label={`View ${product.name}`} className="block h-full w-full">
             <img
@@ -51,7 +51,7 @@ export default function ProductCard({ product, index = 0 }) {
           </span>
         )}
         {!soldOut && (
-          <span className="absolute right-3 top-3 rounded-full border border-purple-mid/50 bg-purple-tint/95 px-3 py-1.5 text-xs font-bold backdrop-blur">
+          <span className="absolute right-3 top-3 rounded-full border border-purple-mid/70 bg-purple-tint/95 px-3 py-1.5 text-xs font-bold backdrop-blur">
             {product.category || "Kids"}
           </span>
         )}
@@ -60,7 +60,7 @@ export default function ProductCard({ product, index = 0 }) {
           onClick={() => toggle(product)}
           aria-pressed={isSaved(product)}
           aria-label={isSaved(product) ? `Remove ${product.name} from wishlist` : `Save ${product.name} to wishlist`}
-          className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full border border-purple-mid/50 bg-purple-tint/95 text-xl shadow-sm"
+          className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full border border-purple-mid/70 bg-purple-tint/95 text-xl shadow-sm"
         >
           {isSaved(product) ? "♥" : "♡"}
         </button>
@@ -71,7 +71,13 @@ export default function ProductCard({ product, index = 0 }) {
           <h3 className="font-display text-lg font-extrabold leading-tight sm:text-xl">
             <Link to={`/product/${product.id}`} className="hover:text-purple-vivid">{product.name}</Link>
           </h3>
-          <p className="shrink-0 text-sm font-bold">{formatKSh(product.price)}</p>
+          <ProductPrice
+            price={product.price}
+            originalPrice={product.originalPrice}
+            className="shrink-0 flex-col items-end text-right"
+            currentClassName="text-sm"
+            previousClassName="text-xs"
+          />
         </div>
 
         <fieldset className="mt-4">
@@ -114,14 +120,14 @@ export default function ProductCard({ product, index = 0 }) {
           </fieldset>
         )}
 
-        <p className="mt-4 text-sm text-ink/60">
-          {soldOut ? "Out of stock" : product.stock <= 5 ? `Only ${product.stock} left` : `${product.stock} in stock`}
-        </p>
+        {product.stock > 0 && product.stock <= 5 && (
+          <p className="mt-4 text-sm font-medium text-coral">Only {product.stock} left</p>
+        )}
 
         <button
           onClick={handleAdd}
           disabled={soldOut}
-          className="mt-4 rounded-full bg-purple-deep py-3 font-bold text-purple-tint transition-colors hover:bg-purple-vivid disabled:cursor-not-allowed disabled:bg-ink/25 disabled:hover:bg-ink/25 disabled:hover:text-white"
+          className="mt-4 rounded-xl bg-purple-deep py-3 font-bold text-purple-tint transition-colors hover:bg-purple-vivid disabled:cursor-not-allowed disabled:bg-ink/25 disabled:hover:bg-ink/25 disabled:hover:text-white"
         >
           {soldOut ? "Sold out" : added ? "Added ✓" : "Add to cart"}
         </button>

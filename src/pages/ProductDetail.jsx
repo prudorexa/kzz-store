@@ -4,13 +4,21 @@ import { useCart } from "../context/CartContext.jsx";
 import { useWishlist } from "../context/WishlistContext.jsx";
 import { useProducts } from "../hooks/useProducts.js";
 import { formatKSh } from "../lib/format.js";
+import ProductPrice from "../components/ProductPrice.jsx";
 import { WHATSAPP_NUMBER } from "../lib/contact.js";
+import {
+  DELIVERY_ESTIMATE_NAIROBI,
+  DELIVERY_ESTIMATE_OTHER,
+  DELIVERY_FEE_NAIROBI,
+  DELIVERY_FEE_OTHER,
+  FREE_DELIVERY_THRESHOLD,
+} from "../lib/checkout.js";
 
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, loading } = useProducts();
-  const { addItem } = useCart();
+  const { addItem, reconcileStock } = useCart();
   const { isSaved, toggle } = useWishlist();
   const [size, setSize] = useState("");
   const [color, setColor] = useState("");
@@ -19,6 +27,10 @@ export default function ProductDetail() {
   const [selectedImage, setSelectedImage] = useState("");
 
   const product = products.find((item) => String(item.id) === String(id));
+
+  useEffect(() => {
+    if (!loading && products.length) reconcileStock(products);
+  }, [loading, products]);
 
   useEffect(() => {
     if (product?.sizes?.length) setSize(product.sizes[0]);
@@ -61,9 +73,9 @@ export default function ProductDetail() {
       <Link to="/" className="mb-7 inline-flex text-sm font-bold text-ink/65 hover:text-ink">← Back to shop</Link>
       <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
-          <div className={`grid min-h-[420px] place-items-center overflow-hidden rounded-[2rem] ${product.tone || "bg-sky"}`}>
+          <div className={`grid aspect-[4/5] max-h-[75vh] place-items-center overflow-hidden rounded-[2rem] ${product.tone || "bg-sky"}`}>
             {selectedImage && !imageFailed ? (
-              <img src={selectedImage} alt={product.name} onError={() => setImageFailed(true)} className="h-full max-h-[650px] w-full object-cover" />
+              <img src={selectedImage} alt={product.name} onError={() => setImageFailed(true)} className="h-full w-full object-contain" />
             ) : (
               <span className="text-[9rem]" role="img" aria-label={product.name}>{product.emoji || "👕"}</span>
             )}
@@ -79,7 +91,7 @@ export default function ProductDetail() {
                   aria-pressed={selectedImage === image}
                   className={`aspect-square overflow-hidden rounded-2xl border-2 ${selectedImage === image ? "border-purple-deep" : "border-transparent"}`}
                 >
-                  <img src={image} alt="" className="h-full w-full object-cover" />
+                  <img src={image} alt="" className="h-full w-full bg-white object-contain" />
                 </button>
               ))}
             </div>
@@ -89,7 +101,13 @@ export default function ProductDetail() {
         <div className="py-2 lg:px-6">
           <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-coral">{product.category}</p>
           <h1 className="mt-3 font-display text-4xl font-extrabold tracking-tight sm:text-5xl">{product.name}</h1>
-          <p className="mt-5 font-display text-3xl font-extrabold">{formatKSh(product.price)}</p>
+          <ProductPrice
+            price={product.price}
+            originalPrice={product.originalPrice}
+            className="mt-5"
+            currentClassName="font-display text-3xl"
+            previousClassName="text-lg"
+          />
           <p className="mt-3 text-sm font-bold text-ink/60">{soldOut ? "Currently sold out" : product.stock <= 5 ? `Only ${product.stock} left` : `${product.stock} in stock`}</p>
 
           <fieldset className="mt-8">
@@ -101,6 +119,11 @@ export default function ProductDetail() {
                 </button>
               ))}
             </div>
+            {product.sizeGuide && (
+              <p className="mt-3 rounded-xl bg-purple-soft px-4 py-3 text-sm leading-6 text-ink/75">
+                <strong>Size guide:</strong> {product.sizeGuide}
+              </p>
+            )}
           </fieldset>
 
           {product.colors?.length > 0 && (
@@ -117,30 +140,32 @@ export default function ProductDetail() {
           )}
 
           <div className="mt-8 flex gap-3">
-            <button onClick={handleAdd} disabled={soldOut} className="flex-1 rounded-full bg-purple-deep py-4 font-bold text-purple-tint hover:bg-purple-vivid disabled:bg-ink/25">
+            <button onClick={handleAdd} disabled={soldOut} className="flex-1 rounded-xl bg-purple-deep py-4 font-bold text-purple-tint hover:bg-purple-vivid disabled:bg-ink/25">
               {soldOut ? "Sold out" : added ? "Added to cart ✓" : "Add to cart"}
             </button>
             <button type="button" onClick={() => toggle(product)} aria-pressed={isSaved(product)} className="grid h-14 w-14 place-items-center rounded-full border border-purple-mid text-xl">
               {isSaved(product) ? "♥" : "♡"}
             </button>
           </div>
-
-          <div className="mt-8 grid gap-3 rounded-3xl border border-purple-mid/50 bg-purple-soft p-5 text-sm leading-6">
-            {product.description && <p>{product.description}</p>}
-            {product.careInstructions && <p><strong>Care:</strong> {product.careInstructions}</p>}
-            {product.sizeGuide && <p><strong>Size guide:</strong> {product.sizeGuide}</p>}
-            {!product.description && <p><strong>Comfort first:</strong> Easy-to-wear fabric and colours made for everyday play.</p>}
-            <p><strong>Delivery:</strong> 1–3 working days in Nairobi, 2–5 days in other counties.</p>
-            <p><strong>Fit:</strong> Choose the closest age size or size up for a comfortable fit.</p>
-          </div>
           <a
-            href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Hi KZZ! I have a question about ${product.name}.`)}`}
+            href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Hi KZZ! I have a question about the size of ${product.name}.`)}`}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#168b47] underline"
+            className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#168b47] underline"
           >
-            Ask about this outfit on WhatsApp
+            Need sizing help? Ask us on WhatsApp
           </a>
+
+          <div className="mt-8 grid gap-3 rounded-2xl border border-purple-mid/70 bg-purple-soft p-5 text-sm leading-6">
+            {product.description && <p>{product.description}</p>}
+            {product.careInstructions && <p><strong>Care:</strong> {product.careInstructions}</p>}
+            {!product.description && <p><strong>Comfort first:</strong> Easy-to-wear fabric and colours made for everyday play.</p>}
+            <p>
+              <strong>Delivery:</strong> {formatKSh(DELIVERY_FEE_NAIROBI)} in Nairobi, {formatKSh(DELIVERY_FEE_OTHER)} in other counties; free on orders of {formatKSh(FREE_DELIVERY_THRESHOLD)} or more.
+            </p>
+            <p><strong>Estimated arrival:</strong> {DELIVERY_ESTIMATE_NAIROBI} in Nairobi and {DELIVERY_ESTIMATE_OTHER} elsewhere.</p>
+            <p><strong>Fit:</strong> Choose the closest age size or size up for a comfortable fit.</p>
+          </div>
         </div>
       </div>
 
@@ -154,7 +179,13 @@ export default function ProductDetail() {
                   {item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" /> : <span className="text-6xl">{item.emoji}</span>}
                 </div>
                 <p className="mt-3 font-display font-extrabold">{item.name}</p>
-                <p className="mt-1 text-sm font-bold">{formatKSh(item.price)}</p>
+                <ProductPrice
+                  price={item.price}
+                  originalPrice={item.originalPrice}
+                  className="mt-1"
+                  currentClassName="text-sm"
+                  previousClassName="text-xs"
+                />
               </Link>
             ))}
           </div>

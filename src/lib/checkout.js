@@ -1,6 +1,8 @@
 export const DELIVERY_FEE_NAIROBI = 250;
 export const DELIVERY_FEE_OTHER = 350;
 export const FREE_DELIVERY_THRESHOLD = 5000;
+export const DELIVERY_ESTIMATE_NAIROBI = "1–2 working days";
+export const DELIVERY_ESTIMATE_OTHER = "2–5 working days";
 
 export function calculateDeliveryFee(county, subtotal) {
   if (!county) return null;

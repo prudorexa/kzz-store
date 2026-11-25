@@ -27,7 +27,7 @@ export function useProducts() {
       if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from("products")
-          .select("id,name,category,price_ksh,cost_ksh,sizes,colors,stock,image_path,emoji,tone,active,created_at,description,care_instructions,size_guide,gallery_paths")
+          .select("id,name,category,product_group,price_ksh,compare_at_price_ksh,offer_starts_at,offer_ends_at,cost_ksh,sizes,colors,stock,image_path,emoji,tone,active,created_at,description,care_instructions,size_guide,gallery_paths")
           .eq("active", true)
           .order("created_at", { ascending: false });
 
@@ -85,9 +85,16 @@ export function useProducts() {
     window.addEventListener(CATALOG_UPDATED_EVENT, syncSavedCatalog);
     window.addEventListener(PRODUCTS_UPDATED_EVENT, syncSavedCatalog);
     window.addEventListener("storage", syncSavedCatalog);
+    const priceRefresh = window.setInterval(() => {
+      setState((current) => ({
+        ...current,
+        products: current.products.map(normalizeProduct),
+      }));
+    }, 30_000);
     load();
     return () => {
       cancelled = true;
+      window.clearInterval(priceRefresh);
       window.removeEventListener(CATALOG_UPDATED_EVENT, syncSavedCatalog);
       window.removeEventListener(PRODUCTS_UPDATED_EVENT, syncSavedCatalog);
       window.removeEventListener("storage", syncSavedCatalog);

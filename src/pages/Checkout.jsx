@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useCart } from "../context/CartContext.jsx";
+import { useProducts } from "../hooks/useProducts.js";
+import ProductPrice from "../components/ProductPrice.jsx";
 import { formatKSh } from "../lib/format.js";
 import { isSupabaseConfigured, supabase } from "../lib/supabase.js";
 import {
   calculateDeliveryFee,
+  DELIVERY_ESTIMATE_NAIROBI,
+  DELIVERY_ESTIMATE_OTHER,
   normalizeKenyanPhone,
 } from "../lib/checkout.js";
 
@@ -29,7 +33,8 @@ async function getCheckoutErrorMessage(error) {
 }
 
 export default function Checkout() {
-  const { items, keyOf, total, clear } = useCart();
+  const { items, keyOf, total, clear, reconcileStock } = useCart();
+  const { products, loading: productsLoading, error: productsError } = useProducts();
   const [pendingOrder, setPendingOrder] = useState(null);
   const [completedOrder, setCompletedOrder] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +45,10 @@ export default function Checkout() {
 
   const deliveryFee = calculateDeliveryFee(county, total);
   const orderTotal = total + (deliveryFee ?? 0);
+
+  useEffect(() => {
+    if (!productsLoading && !productsError && products.length) reconcileStock(products);
+  }, [productsLoading, productsError, products]);
 
   useEffect(() => {
     if (!pendingOrder) return undefined;
@@ -229,7 +238,7 @@ export default function Checkout() {
       )}
 
       <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
-        <form onSubmit={handleSubmit} className="rounded-3xl border border-[#efc5d7] bg-[#fffafa] p-6 shadow-[0_14px_40px_rgba(219,79,145,0.07)] sm:p-8">
+        <form onSubmit={handleSubmit} className="rounded-3xl border border-purple-mid/70 bg-purple-tint p-6 sm:p-8">
           <h2 className="mb-5 font-display text-2xl font-extrabold">Customer information</h2>
 
           <label htmlFor="fullName" className={label}>Full name</label>
@@ -288,7 +297,7 @@ export default function Checkout() {
               <p className="mt-2 text-sm font-bold">
                 {total >= 5000 ? "Free delivery" : `From ${formatKSh(deliveryFee)} estimated delivery`}
                 <span className="ml-1 font-normal text-ink/60">
-                  · {county === "Nairobi" ? "1–2 working days" : "2–5 working days"}
+                  · {county === "Nairobi" ? DELIVERY_ESTIMATE_NAIROBI : DELIVERY_ESTIMATE_OTHER}
                 </span>
               </p>
             )}
@@ -303,7 +312,7 @@ export default function Checkout() {
           </button>
         </form>
 
-        <aside className="h-fit rounded-3xl border border-purple-mid/50 bg-[#f9f5ff] p-6 shadow-[0_14px_40px_rgba(109,40,217,0.07)] sm:p-8 lg:sticky lg:top-24">
+        <aside className="h-fit rounded-3xl border border-purple-mid/70 bg-purple-soft p-6 sm:p-8 lg:sticky lg:top-24">
           <h2 className="mb-5 font-display text-2xl font-extrabold">Your order</h2>
           <ul className="divide-y divide-purple-mid/50">
             {items.map((item) => (
@@ -315,7 +324,13 @@ export default function Checkout() {
                   <p className="truncate font-bold">{item.name}</p>
                   <p className="text-sm text-ink/60">Size {item.size}{item.color ? ` · ${item.color}` : ""} · Qty {item.quantity}</p>
                 </div>
-                <p className="font-bold">{formatKSh(item.price * item.quantity)}</p>
+                <ProductPrice
+                  price={item.price * item.quantity}
+                  originalPrice={item.originalPrice == null ? null : item.originalPrice * item.quantity}
+                  className="items-end"
+                  currentClassName="text-sm"
+                  previousClassName="text-xs"
+                />
               </li>
             ))}
           </ul>

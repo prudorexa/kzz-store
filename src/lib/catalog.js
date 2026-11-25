@@ -1,3 +1,5 @@
+import { resolveOfferPricing } from "./offerSchedule.js";
+
 export const CATALOG_STORAGE_KEY = "kzz.catalog";
 export const CATALOG_UPDATED_EVENT = "kzz-catalog-updated";
 
@@ -22,10 +24,19 @@ export function normalizeProduct(product) {
     : typeof product.colors === "string"
       ? product.colors.split(",").map((color) => color.trim()).filter(Boolean)
       : [];
+  const offerPrice = product.offerPrice ?? product.price_ksh ?? product.price;
+  const compareAtPrice = product.compareAtPrice ?? product.compare_at_price_ksh ?? product.originalPrice;
+  const pricing = resolveOfferPricing({
+    price: offerPrice,
+    compareAtPrice,
+    offerStartsAt: product.offerStartsAt ?? product.offer_starts_at,
+    offerEndsAt: product.offerEndsAt ?? product.offer_ends_at,
+  });
   return {
     ...product,
     id: product.id ?? product.name,
-    price: Number(product.price),
+    productGroup: product.productGroup || product.product_group || "Other",
+    ...pricing,
     stock: Number(product.stock ?? 0),
     sizes: Array.isArray(sizes) && sizes.length ? sizes : ["One size"],
     colors,

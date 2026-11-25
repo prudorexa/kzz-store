@@ -44,7 +44,7 @@ export default function Header() {
   const current = new URLSearchParams(search).get("category");
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#efbdd1]/70 bg-[#fffafd]/95 text-ink shadow-[0_6px_24px_rgba(219,79,145,0.08)] backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-purple-mid/70 bg-paper/95 text-ink shadow-[0_4px_18px_rgba(45,40,48,0.06)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-8">
         <Link to="/" className="flex shrink-0 items-center gap-2.5">
           <img

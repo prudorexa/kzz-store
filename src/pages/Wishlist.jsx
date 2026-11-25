@@ -1,12 +1,19 @@
 import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { useCart } from "../context/CartContext.jsx";
 import { useWishlist } from "../context/WishlistContext.jsx";
 import { useProducts } from "../hooks/useProducts.js";
 import ProductCard from "../components/ProductCard.jsx";
 
 export default function Wishlist() {
   const { ids } = useWishlist();
-  const { products, loading } = useProducts();
+  const { products, loading, error } = useProducts();
+  const { reconcileStock } = useCart();
   const saved = products.filter((product) => ids.some((id) => String(id) === String(product.id)));
+
+  useEffect(() => {
+    if (!loading && !error && products.length) reconcileStock(products);
+  }, [loading, error, products]);
 
   return (
     <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8">
@@ -19,7 +26,7 @@ export default function Wishlist() {
           {saved.map((product, index) => <ProductCard key={product.id} product={product} index={index} />)}
         </div>
       ) : (
-        <div className="mt-10 rounded-3xl border border-dashed border-[#e4acd0] bg-gradient-to-br from-[#fff1f7] to-[#f7f1ff] px-5 py-16 text-center">
+        <div className="mt-10 rounded-3xl border border-dashed border-purple-mid bg-purple-soft px-5 py-16 text-center">
           <p className="text-6xl">♡</p>
           <h2 className="mt-4 font-display text-2xl font-extrabold">Nothing saved yet</h2>
           <p className="mt-2 text-ink/65">Tap the heart on products you want to keep nearby.</p>

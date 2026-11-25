@@ -12,7 +12,7 @@ export default function Contact() {
 
   return (
     <section className="mx-auto max-w-5xl px-5 py-14 sm:px-8">
-      <div className="grid overflow-hidden rounded-[2rem] border border-[#efc5d7] bg-gradient-to-br from-[#fff6fa] to-[#f8f4ff] lg:grid-cols-2">
+      <div className="grid overflow-hidden rounded-3xl border border-purple-mid/70 bg-purple-tint lg:grid-cols-2">
         <div className="p-7 sm:p-10">
           <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-coral">We’re here to help</p>
           <h1 className="mt-3 font-display text-4xl font-extrabold sm:text-5xl">Welcome to KZZ Kids Luxe 🤍✨</h1>
@@ -23,14 +23,14 @@ export default function Contact() {
             href={whatsappUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-7 inline-flex items-center gap-3 rounded-full bg-[#25D366] px-6 py-3.5 font-bold text-[#173b27] transition-transform hover:-translate-y-0.5"
+            className="mt-7 inline-flex items-center gap-3 rounded-xl bg-[#25D366] px-6 py-3.5 font-bold text-[#173b27] transition-transform hover:-translate-y-0.5"
           >
             <span className="text-xl" aria-hidden="true">◉</span>
             Continue on WhatsApp
           </a>
         </div>
 
-        <div className="grid min-h-72 place-items-center bg-gradient-to-br from-[#fff7fb] to-[#f2eaff] p-8">
+        <div className="grid min-h-72 place-items-center bg-purple-soft p-8">
           <div className="max-w-sm">
             <p className="text-5xl" aria-hidden="true">📍</p>
             <p className="mt-4 font-display text-2xl font-extrabold">Find us</p>

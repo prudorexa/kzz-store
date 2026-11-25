@@ -2,6 +2,12 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext.jsx";
 import { formatKSh } from "../lib/format.js";
+import ProductPrice from "./ProductPrice.jsx";
+import {
+  DELIVERY_FEE_NAIROBI,
+  DELIVERY_FEE_OTHER,
+  FREE_DELIVERY_THRESHOLD,
+} from "../lib/checkout.js";
 
 export default function CartDrawer() {
   const { items, isOpen, closeCart, keyOf, increase, decrease, remove, total } = useCart();
@@ -19,8 +25,7 @@ export default function CartDrawer() {
     navigate("/checkout");
   }
 
-  const freeDeliveryThreshold = 5000;
-  const remainingForFreeDelivery = Math.max(0, freeDeliveryThreshold - total);
+  const remainingForFreeDelivery = Math.max(0, FREE_DELIVERY_THRESHOLD - total);
 
   return (
     <>
@@ -75,7 +80,14 @@ export default function CartDrawer() {
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-display font-extrabold">{item.name}</p>
-                    <p className="text-sm text-ink/60">Size {item.size}{item.color ? ` · ${item.color}` : ""} · {formatKSh(item.price)}</p>
+                    <p className="text-sm text-ink/60">Size {item.size}{item.color ? ` · ${item.color}` : ""}</p>
+                    <ProductPrice
+                      price={item.price}
+                      originalPrice={item.originalPrice}
+                      className="mt-1 flex-col items-start"
+                      currentClassName="text-sm"
+                      previousClassName="text-xs"
+                    />
 
                     <div className="mt-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -110,17 +122,22 @@ export default function CartDrawer() {
         <div className="border-t-2 border-ink p-6">
           {items.length > 0 && (
             <div className="mb-4 rounded-2xl bg-purple-soft p-3 text-sm">
+              <p className="font-medium">
+                Delivery: {formatKSh(DELIVERY_FEE_NAIROBI)} Nairobi · {formatKSh(DELIVERY_FEE_OTHER)} other counties
+              </p>
               {remainingForFreeDelivery > 0 ? (
-                <p>Add <strong>{formatKSh(remainingForFreeDelivery)}</strong> more for free delivery.</p>
+                <p className="mt-1">Add <strong>{formatKSh(remainingForFreeDelivery)}</strong> more for free delivery.</p>
               ) : (
-                <p className="font-bold text-purple-vivid">You’ve unlocked free delivery!</p>
+                <p className="mt-1 font-bold text-purple-vivid">You’ve unlocked free delivery!</p>
               )}
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-purple-mid/40">
-                <div
-                  className="h-full rounded-full bg-purple-vivid"
-                  style={{ width: `${Math.min(100, (total / freeDeliveryThreshold) * 100)}%` }}
-                />
-              </div>
+              {remainingForFreeDelivery > 0 && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-purple-mid/40">
+                  <div
+                    className="h-full rounded-full bg-purple-vivid"
+                    style={{ width: `${Math.min(100, (total / FREE_DELIVERY_THRESHOLD) * 100)}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
           <div className="mb-4 flex items-center justify-between text-lg">

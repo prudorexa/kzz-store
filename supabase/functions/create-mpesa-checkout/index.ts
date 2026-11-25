@@ -15,6 +15,21 @@ type CheckoutBody = {
   items: CheckoutItem[];
 };
 
+function effectiveProductPrice(product: {
+  price_ksh: number;
+  compare_at_price_ksh: number | null;
+  offer_starts_at: string | null;
+  offer_ends_at: string | null;
+}, now: number) {
+  if (product.compare_at_price_ksh == null) return product.price_ksh;
+  const startsAt = product.offer_starts_at ? Date.parse(product.offer_starts_at) : null;
+  const endsAt = product.offer_ends_at ? Date.parse(product.offer_ends_at) : null;
+  const offerIsActive =
+    (startsAt == null || now >= startsAt) &&
+    (endsAt == null || now < endsAt);
+  return offerIsActive ? product.price_ksh : product.compare_at_price_ksh;
+}
+
 function normalizePhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (/^0[17]\d{8}$/.test(digits)) return `254${digits.slice(1)}`;
@@ -160,14 +175,14 @@ Deno.serve(async (request) => {
     const productIds = [...new Set(body.items.map((item) => item.productId))];
     const { data: products, error: productsError } = await database
       .from("products")
-      .select("id,name,price_ksh,sizes,colors,stock,active")
+      .select("id,name,price_ksh,compare_at_price_ksh,offer_starts_at,offer_ends_at,sizes,colors,stock,active")
       .in("id", productIds);
     if (productsError) throw productsError;
 
     const productById = new Map((products ?? []).map((product) => [product.id, product]));
+    const pricingTime = Date.now();
     let total = 0;
     const requestedStock = new Map<string, number>();
-    const orderItems = [];
     for (const item of body.items) {
       const product = productById.get(item.productId);
       if (!product || !product.active) {
@@ -182,15 +197,8 @@ Deno.serve(async (request) => {
         return jsonResponse({ error: `Colour ${color} is no longer available for ${product.name}.` }, 409, origin);
       }
       requestedStock.set(product.id, (requestedStock.get(product.id) ?? 0) + item.quantity);
-      total += product.price_ksh * item.quantity;
-      orderItems.push({
-        product_id: product.id,
-        product_name: product.name,
-        size: item.size,
-        color,
-        quantity: item.quantity,
-        unit_price_ksh: product.price_ksh,
-      });
+      const unitPrice = effectiveProductPrice(product, pricingTime);
+      total += unitPrice * item.quantity;
     }
     for (const [productId, quantity] of requestedStock) {
       const product = productById.get(productId);
@@ -231,12 +239,17 @@ Deno.serve(async (request) => {
         console.error("Cash-on-delivery order could not be created", codError);
         return jsonResponse({ error: codError.message || "Could not place this order. Please try again." }, 409, origin);
       }
+      const { data: savedItems, error: savedItemsError } = await database
+        .from("order_items")
+        .select("product_name,size,color,quantity,unit_price_ksh")
+        .eq("order_id", orderId);
+      if (savedItemsError) throw savedItemsError;
       const emailSent = await sendOrderConfirmationEmail(
         customer.email.trim().slice(0, 254),
         customer.name.trim().slice(0, 120),
         orderNumber,
         accessToken,
-        orderItems,
+        savedItems ?? [],
         Number(codTotal),
         paymentMethod,
       );
@@ -270,6 +283,11 @@ Deno.serve(async (request) => {
     });
     if (reserveError) throw reserveError;
     total = Number(reservedTotal);
+    const { data: savedItems, error: savedItemsError } = await database
+      .from("order_items")
+      .select("product_name,size,color,quantity,unit_price_ksh")
+      .eq("order_id", orderId);
+    if (savedItemsError) throw savedItemsError;
 
     const environment = Deno.env.get("MPESA_ENV") === "production"
       ? "https://api.safaricom.co.ke"
@@ -345,7 +363,7 @@ Deno.serve(async (request) => {
       customer.name.trim().slice(0, 120),
       orderNumber,
       accessToken,
-      orderItems,
+      savedItems ?? [],
       total,
       paymentMethod,
     );

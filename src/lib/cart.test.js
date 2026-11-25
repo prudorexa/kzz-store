@@ -27,3 +27,12 @@ test("keeps valid cart quantities when stock is sufficient", () => {
     [{ id: "a", quantity: 2, stock: 5 }]
   );
 });
+
+test("refreshes the cart price when a product price changes", () => {
+  const result = reconcileCartItems(
+    [{ id: "a", quantity: 1, price: 1800 }],
+    [{ id: "a", stock: 5, price: 1400, originalPrice: 1800 }]
+  );
+
+  assert.deepEqual(result, [{ id: "a", quantity: 1, price: 1400, originalPrice: 1800, stock: 5 }]);
+});

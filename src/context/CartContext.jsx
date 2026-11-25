@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useReducer, useState } from "react";
 import { reconcileCartItems } from "../lib/cart.js";
+import { resolveOfferPricing } from "../lib/offerSchedule.js";
 
 // Same storage key as the original site, so saved carts carry over.
 const STORAGE_KEY = "kzzCart";
@@ -44,6 +45,16 @@ function reducer(state, action) {
       return [];
     case "replace":
       return action.items;
+    case "refresh-prices":
+      return state.map((item) => {
+        const pricing = resolveOfferPricing({
+          price: item.offerPrice ?? item.price,
+          compareAtPrice: item.compareAtPrice ?? item.originalPrice,
+          offerStartsAt: item.offerStartsAt,
+          offerEndsAt: item.offerEndsAt,
+        });
+        return { ...item, price: pricing.price, originalPrice: pricing.originalPrice };
+      });
     default:
       return state;
   }
@@ -63,6 +74,11 @@ export function CartProvider({ children }) {
     }
   }, [items]);
 
+  useEffect(() => {
+    const priceRefresh = window.setInterval(() => dispatch({ type: "refresh-prices" }), 30_000);
+    return () => window.clearInterval(priceRefresh);
+  }, []);
+
   const value = {
     items,
     isOpen,
@@ -76,6 +92,11 @@ export function CartProvider({ children }) {
           id: product.id,
           name: product.name,
           price: product.price,
+          originalPrice: product.originalPrice,
+          offerPrice: product.offerPrice ?? product.price,
+          compareAtPrice: product.compareAtPrice ?? product.originalPrice,
+          offerStartsAt: product.offerStartsAt ?? null,
+          offerEndsAt: product.offerEndsAt ?? null,
           size,
           color,
           image: product.image,

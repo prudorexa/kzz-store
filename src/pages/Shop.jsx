@@ -99,7 +99,7 @@ export default function Shop() {
           )}
         </div>
 
-        <div className="mb-7 grid gap-3 rounded-3xl border border-[#efc5d7] bg-gradient-to-br from-[#fff5f9] to-[#f5efff] p-4 shadow-[0_12px_35px_rgba(219,79,145,0.07)] sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-7 grid gap-3 rounded-2xl border border-purple-mid/70 bg-purple-tint p-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-bold">
             Search
             <input

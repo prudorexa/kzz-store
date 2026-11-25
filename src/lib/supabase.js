@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { resolveOfferPricing } from "./offerSchedule.js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -23,10 +24,17 @@ export function mapSupabaseProduct(row) {
   const image = row.image_path
     ? supabase.storage.from("product-images").getPublicUrl(row.image_path).data.publicUrl
     : null;
+  const pricing = resolveOfferPricing({
+    price: row.price_ksh,
+    compareAtPrice: row.compare_at_price_ksh,
+    offerStartsAt: row.offer_starts_at,
+    offerEndsAt: row.offer_ends_at,
+  });
 
   return {
     ...row,
-    price: Number(row.price_ksh),
+    productGroup: row.product_group || "Other",
+    ...pricing,
     cost: row.cost_ksh == null ? null : Number(row.cost_ksh),
     colors: row.colors || [],
     image,

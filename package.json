@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/generate-public-photo-manifest.js",
     "dev": "vite",
+    "prebuild": "node scripts/generate-public-photo-manifest.js",
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test src/**/*.test.js"
