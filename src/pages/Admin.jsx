@@ -236,19 +236,20 @@ export default function Admin() {
     }
   }
 
-  async function importPublicPhotos(product, onProgress) {
+  async function importPublicPhotoBatch(batch, onProgress) {
+    const totalPhotos = batch.reduce((total, product) => total + product.photos.length, 0);
     if (!isSupabaseConfigured) {
-      const newProduct = {
+      const newProducts = batch.map((product) => ({
         id: `public-${product.photos[0].id}`,
         name: product.name,
         category: product.category,
         productGroup: product.productGroup,
         price: product.price,
         originalPrice: product.originalPrice,
-        offerPrice: product.offerPrice ?? product.price,
-        compareAtPrice: product.compareAtPrice ?? product.originalPrice,
-        offerStartsAt: product.offerStartsAt ?? null,
-        offerEndsAt: product.offerEndsAt ?? null,
+        offerPrice: product.price,
+        compareAtPrice: product.originalPrice,
+        offerStartsAt: product.offerStartsAt,
+        offerEndsAt: product.offerEndsAt,
         cost: null,
         sizes: product.sizes,
         colors: [],
@@ -260,74 +261,153 @@ export default function Admin() {
         careInstructions: "",
         sizeGuide: "",
         gallery: product.photos.slice(1).map((photo) => photo.url),
-      };
-      if (!updateCatalog([newProduct, ...products])) {
+      }));
+      if (!updateCatalog([...newProducts, ...products])) {
         return {
-          importedIds: [],
-          failures: [{ id: product.photos[0].id, name: product.name, message: "Could not save this browser catalog." }],
+          results: batch.map((product) => ({
+            importedIds: [],
+            failures: [{ id: product.photos[0].id, name: product.name, message: "Could not save this browser catalog." }],
+          })),
         };
       }
-      onProgress(product.photos.length);
-      return { importedIds: product.photos.map((photo) => photo.id), failures: [] };
-    }
-
-    const uploadedPaths = [];
-    try {
-      for (const [index, photo] of product.photos.entries()) {
-        try {
-          const response = await fetch(photo.url);
-          if (!response.ok) throw new Error(`Could not read ${photo.name}.`);
-          const source = await response.blob();
-          const file = new File([source], photo.name, { type: source.type || "image/jpeg" });
-          const prepared = await prepareImage(file);
-          const imageBlob = await (await fetch(prepared)).blob();
-          const path = `${product.category.toLowerCase()}/${crypto.randomUUID()}.jpg`;
-          const { error: uploadError } = await supabase.storage
-            .from("product-images")
-            .upload(path, imageBlob, { contentType: "image/jpeg", upsert: false });
-          if (uploadError) throw uploadError;
-          uploadedPaths.push(path);
-        } finally {
-          onProgress(index + 1);
-        }
-      }
-
-      const row = {
-        name: product.name,
-        category: product.category,
-        product_group: product.productGroup,
-        price_ksh: product.price,
-        compare_at_price_ksh: product.originalPrice,
-        offer_starts_at: product.offerStartsAt ?? null,
-        offer_ends_at: product.offerEndsAt ?? null,
-        cost_ksh: null,
-        sizes: product.sizes,
-        colors: [],
-        stock: product.stock,
-        image_path: uploadedPaths[0],
-        emoji: "👕",
-        tone: "bg-lilac",
-        description: "",
-        care_instructions: "",
-        size_guide: "",
-        gallery_paths: uploadedPaths.slice(1),
-        active: true,
-      };
-      const { error: saveError } = await supabase.from("products").insert(row);
-      if (saveError) throw saveError;
-      notifyProductsUpdated();
-      return { importedIds: product.photos.map((photo) => photo.id), failures: [] };
-    } catch (importError) {
-      let message = importError.message || "Could not save this product.";
-      if (uploadedPaths.length) {
-        const { error: cleanupError } = await supabase.storage.from("product-images").remove(uploadedPaths);
-        if (cleanupError) message += ` Cleanup failed: ${cleanupError.message}`;
-      }
+      onProgress(totalPhotos, totalPhotos);
       return {
-        importedIds: [],
-        failures: [{ id: product.photos[0].id, name: product.name, message }],
+        results: batch.map((product) => ({
+          importedIds: product.photos.map((photo) => photo.id),
+          failures: [],
+        })),
       };
     }
+
+    const uploadedPathsByProduct = batch.map(() => []);
+    const imagePathsByProduct = batch.map((product) => Array(product.photos.length));
+    const uploadErrorsByProduct = batch.map(() => []);
+    const tasks = batch.flatMap((product, productIndex) =>
+      product.photos.map((photo, photoIndex) => ({ product, productIndex, photo, photoIndex }))
+    );
+    let nextTask = 0;
+    let completed = 0;
+
+    async function uploadPhoto({ product, productIndex, photo, photoIndex }) {
+      try {
+        const response = await fetch(photo.url);
+        if (!response.ok) throw new Error(`Could not read ${photo.name}.`);
+        const source = await response.blob();
+        const file = new File([source], photo.name, { type: source.type || "image/jpeg" });
+        const prepared = await prepareImage(file);
+        const imageBlob = await (await fetch(prepared)).blob();
+        const path = `${product.category.toLowerCase()}/${crypto.randomUUID()}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from("product-images")
+          .upload(path, imageBlob, { contentType: "image/jpeg", upsert: false });
+        if (uploadError) throw uploadError;
+        uploadedPathsByProduct[productIndex].push(path);
+        imagePathsByProduct[productIndex][photoIndex] = path;
+      } catch (uploadError) {
+        uploadErrorsByProduct[productIndex].push(`${photo.name}: ${uploadError.message || "Could not upload this photo."}`);
+      } finally {
+        completed += 1;
+        onProgress(completed, totalPhotos);
+      }
+    }
+
+    async function uploadWorker() {
+      while (nextTask < tasks.length) {
+        const taskIndex = nextTask;
+        nextTask += 1;
+        await uploadPhoto(tasks[taskIndex]);
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(4, tasks.length) }, () => uploadWorker()));
+
+    const failedProductPaths = uploadedPathsByProduct.flatMap((paths, index) =>
+      uploadErrorsByProduct[index].length ? paths : []
+    );
+    if (failedProductPaths.length) {
+      const { error: cleanupError } = await supabase.storage.from("product-images").remove(failedProductPaths);
+      if (cleanupError) {
+        uploadErrorsByProduct.forEach((errors, index) => {
+          if (errors.length && uploadedPathsByProduct[index].length) {
+            errors.push(`Cleanup failed: ${cleanupError.message}`);
+          }
+        });
+      }
+    }
+
+    const successfulProductIndices = batch
+      .map((_, index) => index)
+      .filter((index) => !uploadErrorsByProduct[index].length);
+    if (successfulProductIndices.length) {
+      const rows = successfulProductIndices.map((index) => {
+        const product = batch[index];
+        const paths = imagePathsByProduct[index];
+        return {
+          name: product.name,
+          category: product.category,
+          product_group: product.productGroup,
+          price_ksh: product.price,
+          compare_at_price_ksh: product.originalPrice,
+          offer_starts_at: product.offerStartsAt ?? null,
+          offer_ends_at: product.offerEndsAt ?? null,
+          cost_ksh: null,
+          sizes: product.sizes,
+          colors: [],
+          stock: product.stock,
+          image_path: paths[0],
+          emoji: "👕",
+          tone: "bg-lilac",
+          description: "",
+          care_instructions: "",
+          size_guide: "",
+          gallery_paths: paths.slice(1),
+          active: true,
+        };
+      });
+
+      let saveError;
+      try {
+        ({ error: saveError } = await supabase.from("products").insert(rows));
+      } catch (error) {
+        saveError = error;
+      }
+      if (saveError) {
+        const successfulPaths = successfulProductIndices.flatMap((index) => uploadedPathsByProduct[index]);
+        const { error: cleanupError } = successfulPaths.length
+          ? await supabase.storage.from("product-images").remove(successfulPaths)
+          : { error: null };
+        const message = `${saveError.message || "Could not save products."}${cleanupError ? ` Cleanup failed: ${cleanupError.message}` : ""}`;
+        return {
+          results: batch.map((product, index) => ({
+            importedIds: [],
+            failures: [{
+              id: product.photos[0].id,
+              name: product.name,
+              message: uploadErrorsByProduct[index].length
+                ? uploadErrorsByProduct[index].join(" ")
+                : message,
+            }],
+          })),
+        };
+      }
+      notifyProductsUpdated();
+    }
+
+    return {
+      results: batch.map((product, index) => uploadErrorsByProduct[index].length
+        ? {
+            importedIds: [],
+            failures: [{
+              id: product.photos[0].id,
+              name: product.name,
+              message: uploadErrorsByProduct[index].join(" "),
+            }],
+          }
+        : {
+            importedIds: product.photos.map((photo) => photo.id),
+            failures: [],
+          }),
+    };
   }
 
   async function submitProduct(event) {
@@ -980,7 +1060,7 @@ export default function Admin() {
       {showPhotoImporter && (
         <PublicPhotoImporter
           onClose={() => setShowPhotoImporter(false)}
-          onImport={importPublicPhotos}
+          onImportBatch={importPublicPhotoBatch}
         />
       )}
 

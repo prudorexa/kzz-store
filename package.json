@@ -12,6 +12,7 @@
     "test": "node --test src/**/*.test.js"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.2.3",
     "@opencode/cli": "^2.3.2",
     "@supabase/supabase-js": "^2.119.0",
     "react": "^18.3.1",
