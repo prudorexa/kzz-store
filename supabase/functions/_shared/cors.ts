@@ -4,6 +4,7 @@ const localOrigins = [
   "http://localhost:4173",
   "http://127.0.0.1:4173",
 ];
+const storefrontOrigins = ["https://kzz-store.vercel.app"];
 
 export function isAllowedOrigin(origin: string | null) {
   if (!origin) return false;
@@ -11,7 +12,9 @@ export function isAllowedOrigin(origin: string | null) {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  const allowedOrigins = configuredOrigins.length ? configuredOrigins : localOrigins;
+  const allowedOrigins = configuredOrigins.length
+    ? [...configuredOrigins, ...storefrontOrigins]
+    : [...localOrigins, ...storefrontOrigins];
   return allowedOrigins.includes(origin);
 }
 

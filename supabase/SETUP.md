@@ -47,7 +47,7 @@ supabase secrets set \
   MPESA_CONSUMER_KEY=YOUR_DARAJA_CONSUMER_KEY \
   MPESA_CONSUMER_SECRET=YOUR_DARAJA_CONSUMER_SECRET \
   MPESA_CALLBACK_TOKEN=GENERATE_A_LONG_RANDOM_VALUE \
-  ALLOWED_ORIGINS=http://localhost:5173
+  ALLOWED_ORIGINS=http://localhost:5173,https://kzz-store.vercel.app
 ```
 
 Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions. The M-Pesa callback URL is generated from the project URL and callback token.
@@ -60,7 +60,7 @@ supabase functions deploy order-status
 supabase functions deploy mpesa-callback
 ```
 
-Run `npm run dev` after saving `.env.local`. For a deployed storefront, add its exact HTTPS origin to `ALLOWED_ORIGINS`. Test with Daraja sandbox before changing `MPESA_ENV` to `production`; live use also requires Safaricom production approval and credentials.
+Run `npm run dev` after saving `.env.local`. The production Vercel storefront origin is allowed by the Edge Function; add any custom storefront domain as an exact HTTPS origin in `ALLOWED_ORIGINS`. Test with Daraja sandbox before changing `MPESA_ENV` to `production`; live use also requires Safaricom production approval and credentials.
 
 Customers can select M-Pesa or cash on delivery at checkout. For cash orders, update the delivery progress in **Admin → Orders**; once marked delivered, use **Mark cash received** after collecting payment.
 

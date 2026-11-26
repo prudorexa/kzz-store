@@ -7,3 +7,5 @@ dist
 
 .supabase
 supabase/.temp
+.env.example
+
