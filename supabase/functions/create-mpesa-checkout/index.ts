@@ -4,6 +4,8 @@ import { isAllowedOrigin, jsonResponse } from "../_shared/cors.ts";
 type CheckoutItem = { productId: string; size: string; color?: string; quantity: number };
 type CheckoutBody = {
   paymentMethod?: "mpesa" | "cash_on_delivery";
+  fulfillmentMethod?: "delivery" | "pickup";
+  deliveryDistanceBand?: string | null;
   customer: {
     name: string;
     email: string;
@@ -14,6 +16,14 @@ type CheckoutBody = {
   };
   items: CheckoutItem[];
 };
+
+const DELIVERY_FEES: Record<string, number> = {
+  up_to_5_km: 100,
+  "5_to_10_km": 150,
+  "10_to_20_km": 250,
+  over_20_km: 350,
+};
+const PICKUP_ADDRESS = "Shop pickup: Opposite Rubis Petrol Station, Magadi Road, Ongata Rongai";
 
 function effectiveProductPrice(product: {
   price_ksh: number;
@@ -63,6 +73,7 @@ async function sendOrderConfirmationEmail(
   items: Array<{ product_name: string; size: string; color?: string; quantity: number; unit_price_ksh: number }>,
   total: number,
   paymentMethod: "mpesa" | "cash_on_delivery",
+  fulfillmentMethod: "delivery" | "pickup",
 ) {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   const sender = Deno.env.get("ORDER_EMAIL_FROM");
@@ -86,7 +97,11 @@ async function sendOrderConfirmationEmail(
     const htmlItems = items.map((item) =>
       `<li>${item.quantity} × ${escapeHtml(item.product_name)} · Size ${escapeHtml(item.size)}${item.color ? ` · ${escapeHtml(item.color)}` : ""} — KSh ${(item.unit_price_ksh * item.quantity).toLocaleString("en-KE")}</li>`
     ).join("");
-    const paymentNote = paymentMethod === "cash_on_delivery"
+    const paymentNote = fulfillmentMethod === "pickup"
+      ? paymentMethod === "cash_on_delivery"
+        ? "Pay cash when you collect your order. We’ll contact you when it’s ready for collection from Opposite Rubis Petrol Station, Magadi Road, Ongata Rongai."
+        : "We’ll contact you when your order is ready for collection from Opposite Rubis Petrol Station, Magadi Road, Ongata Rongai."
+      : paymentMethod === "cash_on_delivery"
       ? "Pay cash to the delivery person when your order arrives."
       : "Check your phone for the M-Pesa payment prompt.";
     const response = await fetch("https://api.resend.com/emails", {
@@ -133,6 +148,10 @@ Deno.serve(async (request) => {
     const body = await request.json() as CheckoutBody;
     const customer = body.customer;
     const paymentMethod = body.paymentMethod ?? "mpesa";
+    const fulfillmentMethod = body.fulfillmentMethod;
+    if (fulfillmentMethod !== "delivery" && fulfillmentMethod !== "pickup") {
+      return jsonResponse({ error: "Choose delivery or shop pickup." }, 400, origin);
+    }
     if (paymentMethod !== "mpesa" && paymentMethod !== "cash_on_delivery") {
       return jsonResponse({ error: "Choose a supported payment method." }, 400, origin);
     }
@@ -142,11 +161,17 @@ Deno.serve(async (request) => {
       !customer ||
       !customer.name?.trim() ||
       !customer.email?.trim() ||
-      !customer.county?.trim() ||
-      !customer.town?.trim() ||
-      !customer.address?.trim()
+      (fulfillmentMethod === "delivery" &&
+        (!customer.county?.trim() || !customer.town?.trim() || !customer.address?.trim()))
     ) {
-      return jsonResponse({ error: "Complete all customer and delivery details." }, 400, origin);
+      return jsonResponse({ error: "Complete all required customer and delivery details." }, 400, origin);
+    }
+    if (
+      fulfillmentMethod === "delivery" &&
+      (typeof body.deliveryDistanceBand !== "string" ||
+        !Object.hasOwn(DELIVERY_FEES, body.deliveryDistanceBand))
+    ) {
+      return jsonResponse({ error: "Choose a valid delivery distance." }, 400, origin);
     }
     if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 30) {
       return jsonResponse({ error: "Your cart is empty or contains too many items." }, 400, origin);
@@ -209,9 +234,11 @@ Deno.serve(async (request) => {
     if (!Number.isSafeInteger(total) || total < 1) {
       return jsonResponse({ error: "The order total is invalid." }, 400, origin);
     }
-    const deliveryFee = total >= 5000 ? 0 : customer.county.trim() === "Nairobi" ? 250 : 350;
-    total += deliveryFee;
-
+    const customerCounty = fulfillmentMethod === "pickup" ? "Kajiado" : customer.county.trim();
+    const customerTown = fulfillmentMethod === "pickup" ? "Ongata Rongai" : customer.town.trim();
+    const customerAddress = fulfillmentMethod === "pickup"
+      ? PICKUP_ADDRESS
+      : customer.address.trim();
     const orderId = crypto.randomUUID();
     createdOrderId = orderId;
     const orderNumber = `KZZ-${orderId.replaceAll("-", "").slice(0, 8).toUpperCase()}`;
@@ -224,9 +251,9 @@ Deno.serve(async (request) => {
         p_customer_name: customer.name.trim().slice(0, 120),
         p_email: customer.email.trim().slice(0, 254),
         p_phone: phone,
-        p_county: customer.county.trim().slice(0, 80),
-        p_town: customer.town.trim().slice(0, 100),
-        p_delivery_address: customer.address.trim().slice(0, 500),
+        p_county: customerCounty.slice(0, 80),
+        p_town: customerTown.slice(0, 100),
+        p_delivery_address: customerAddress.slice(0, 500),
         p_items: body.items.map((item) => ({
           product_id: item.productId,
           size: item.size,
@@ -244,22 +271,49 @@ Deno.serve(async (request) => {
         .select("product_name,size,color,quantity,unit_price_ksh")
         .eq("order_id", orderId);
       if (savedItemsError) throw savedItemsError;
+      if (!savedItems?.length) throw new Error("The order was created without any items.");
+      const savedSubtotal = savedItems.reduce(
+        (subtotal, item) => subtotal + item.unit_price_ksh * item.quantity,
+        0,
+      );
+      const previousDeliveryFee = savedSubtotal >= 5000
+        ? 0
+        : customerCounty === "Nairobi"
+        ? 250
+        : 350;
+      const deliveryFee = fulfillmentMethod === "pickup" || savedSubtotal >= 5000
+        ? 0
+        : DELIVERY_FEES[body.deliveryDistanceBand ?? ""];
+      total = Number(codTotal) - previousDeliveryFee + deliveryFee;
+      if (!Number.isSafeInteger(total) || total < 1) {
+        throw new Error("The final order total is invalid.");
+      }
+      const { error: orderUpdateError } = await database.from("orders").update({
+        total_ksh: total,
+        fulfillment_method: fulfillmentMethod,
+        delivery_distance_band: fulfillmentMethod === "delivery" ? body.deliveryDistanceBand : null,
+      }).eq("id", orderId);
+      if (orderUpdateError) throw orderUpdateError;
       const emailSent = await sendOrderConfirmationEmail(
         customer.email.trim().slice(0, 254),
         customer.name.trim().slice(0, 120),
         orderNumber,
         accessToken,
         savedItems ?? [],
-        Number(codTotal),
+        total,
         paymentMethod,
+        fulfillmentMethod,
       );
       return jsonResponse({
         orderId,
         orderNumber,
         accessToken,
-        total: Number(codTotal),
+        total,
         paymentMethod,
-        message: "Cash is due when your order is delivered.",
+        fulfillmentMethod,
+        message: fulfillmentMethod === "pickup"
+          ? "We’ll contact you when your order is ready for collection."
+          : "Cash is due when your order is delivered.",
         emailSent,
       }, 201, origin);
     }
@@ -271,9 +325,9 @@ Deno.serve(async (request) => {
       p_customer_name: customer.name.trim().slice(0, 120),
       p_email: customer.email.trim().slice(0, 254),
       p_phone: phone,
-      p_county: customer.county.trim().slice(0, 80),
-      p_town: customer.town.trim().slice(0, 100),
-      p_delivery_address: customer.address.trim().slice(0, 500),
+      p_county: customerCounty.slice(0, 80),
+      p_town: customerTown.slice(0, 100),
+      p_delivery_address: customerAddress.slice(0, 500),
       p_items: body.items.map((item) => ({
         product_id: item.productId,
         size: item.size,
@@ -282,12 +336,34 @@ Deno.serve(async (request) => {
       })),
     });
     if (reserveError) throw reserveError;
-    total = Number(reservedTotal);
     const { data: savedItems, error: savedItemsError } = await database
       .from("order_items")
       .select("product_name,size,color,quantity,unit_price_ksh")
       .eq("order_id", orderId);
     if (savedItemsError) throw savedItemsError;
+    if (!savedItems?.length) throw new Error("The order was created without any items.");
+    const savedSubtotal = savedItems.reduce(
+      (subtotal, item) => subtotal + item.unit_price_ksh * item.quantity,
+      0,
+    );
+    const previousDeliveryFee = savedSubtotal >= 5000
+      ? 0
+      : customerCounty === "Nairobi"
+      ? 250
+      : 350;
+    const deliveryFee = fulfillmentMethod === "pickup" || savedSubtotal >= 5000
+      ? 0
+      : DELIVERY_FEES[body.deliveryDistanceBand ?? ""];
+    total = Number(reservedTotal) - previousDeliveryFee + deliveryFee;
+    if (!Number.isSafeInteger(total) || total < 1) {
+      throw new Error("The final order total is invalid.");
+    }
+    const { error: orderUpdateError } = await database.from("orders").update({
+      total_ksh: total,
+      fulfillment_method: fulfillmentMethod,
+      delivery_distance_band: fulfillmentMethod === "delivery" ? body.deliveryDistanceBand : null,
+    }).eq("id", orderId);
+    if (orderUpdateError) throw orderUpdateError;
 
     const environment = Deno.env.get("MPESA_ENV") === "production"
       ? "https://api.safaricom.co.ke"
@@ -366,6 +442,7 @@ Deno.serve(async (request) => {
       savedItems ?? [],
       total,
       paymentMethod,
+      fulfillmentMethod,
     );
 
     return jsonResponse({
@@ -374,6 +451,7 @@ Deno.serve(async (request) => {
       accessToken,
       total,
       paymentMethod,
+      fulfillmentMethod,
       message: stkData.CustomerMessage ?? "Check your phone and enter your M-Pesa PIN.",
       emailSent,
     }, 202, origin);

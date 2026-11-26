@@ -7,10 +7,10 @@ import { formatKSh } from "../lib/format.js";
 import { isSupabaseConfigured, supabase } from "../lib/supabase.js";
 import {
   calculateDeliveryFee,
-  DELIVERY_ESTIMATE_NAIROBI,
-  DELIVERY_ESTIMATE_OTHER,
+  DELIVERY_DISTANCE_BANDS,
   normalizeKenyanPhone,
 } from "../lib/checkout.js";
+import { BUSINESS_LOCATION } from "../lib/business.js";
 
 const counties = ["Nairobi", "Mombasa", "Kisumu", "Nakuru", "Kiambu", "Machakos", "Kajiado", "Uasin Gishu", "Other"];
 const field =
@@ -40,10 +40,14 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [county, setCounty] = useState("");
+  const [fulfillmentMethod, setFulfillmentMethod] = useState("delivery");
+  const [deliveryDistanceBand, setDeliveryDistanceBand] = useState("");
   const [phone, setPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("mpesa");
 
-  const deliveryFee = calculateDeliveryFee(county, total);
+  const isPickup = fulfillmentMethod === "pickup";
+  const selectedDistanceBand = DELIVERY_DISTANCE_BANDS.find((band) => band.value === deliveryDistanceBand);
+  const deliveryFee = calculateDeliveryFee(fulfillmentMethod, deliveryDistanceBand, total);
   const orderTotal = total + (deliveryFee ?? 0);
 
   useEffect(() => {
@@ -117,13 +121,15 @@ export default function Checkout() {
     }
     const { data, error: checkoutError } = await supabase.functions.invoke("create-mpesa-checkout", {
       body: {
+        fulfillmentMethod,
+        deliveryDistanceBand: isPickup ? null : form.deliveryDistanceBand,
         customer: {
           name: form.fullName,
           phone: normalizedPhone,
           email: form.email,
-          county: form.county,
-          town: form.town,
-          address: form.address,
+          county: isPickup ? "Kajiado" : form.county,
+          town: isPickup ? "Ongata Rongai" : form.town,
+          address: isPickup ? `Shop pickup: ${BUSINESS_LOCATION}` : form.address,
         },
         paymentMethod: selectedPaymentMethod,
         items: items.map((item) => ({
@@ -148,6 +154,7 @@ export default function Checkout() {
       total: data.total ?? total,
       message: data.message,
       emailSent: data.emailSent,
+      fulfillmentMethod,
       trackingUrl: `${window.location.origin}/track/${encodeURIComponent(data.orderNumber)}#${encodeURIComponent(data.accessToken)}`,
     };
     if (selectedPaymentMethod === "cash_on_delivery") {
@@ -167,7 +174,9 @@ export default function Checkout() {
         </h1>
         <p className="mt-3 text-lg leading-7 text-ink/75">
           Order <strong>{completedOrder.orderNumber}</strong> for {formatKSh(completedOrder.total)} is confirmed.
-          {completedOrder.paymentMethod === "cash_on_delivery" && <span className="block">Pay {formatKSh(completedOrder.total)} in cash when your order is delivered.</span>}
+          {completedOrder.fulfillmentMethod === "pickup" && <span className="block">Collect your order from {BUSINESS_LOCATION}.</span>}
+          {completedOrder.paymentMethod === "cash_on_delivery" && completedOrder.fulfillmentMethod !== "pickup" && <span className="block">Pay {formatKSh(completedOrder.total)} in cash when your order is delivered.</span>}
+          {completedOrder.paymentMethod === "cash_on_delivery" && completedOrder.fulfillmentMethod === "pickup" && <span className="block">Pay {formatKSh(completedOrder.total)} in cash when you collect your order.</span>}
           {completedOrder.paymentMethod !== "cash_on_delivery" && completedOrder.message && <span className="mt-2 block text-sm">M-Pesa receipt: {completedOrder.message}</span>}
         </p>
         <p className="mt-3 text-sm text-ink/65">
@@ -264,24 +273,59 @@ export default function Checkout() {
             </div>
           </div>
 
-          <h2 className="mb-5 mt-4 font-display text-2xl font-extrabold">Delivery information</h2>
+          <h2 className="mb-5 mt-4 font-display text-2xl font-extrabold">Delivery or pickup</h2>
+          <fieldset className="mb-5 rounded-2xl border border-purple-mid/40 bg-purple-tint p-4">
+            <legend className="px-1 font-bold">How would you like to get your order?</legend>
+            <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-xl p-2">
+              <input type="radio" name="fulfillmentMethod" value="delivery" checked={fulfillmentMethod === "delivery"} onChange={() => setFulfillmentMethod("delivery")} className="mt-1 accent-purple-deep" />
+              <span><strong>Deliver to me</strong><span className="block text-sm leading-6 text-ink/65">Choose an estimated distance from our Ongata Rongai shop.</span></span>
+            </label>
+            <label className="mt-1 flex cursor-pointer items-start gap-3 rounded-xl p-2">
+              <input type="radio" name="fulfillmentMethod" value="pickup" checked={fulfillmentMethod === "pickup"} onChange={() => setFulfillmentMethod("pickup")} className="mt-1 accent-purple-deep" />
+              <span><strong>Pick up from the shop</strong><span className="block text-sm leading-6 text-ink/65">{BUSINESS_LOCATION} · Free</span></span>
+            </label>
+          </fieldset>
 
-          <div className="grid gap-x-5 sm:grid-cols-2">
-            <div>
-              <label htmlFor="county" className={label}>County</label>
-              <select id="county" name="county" required value={county} onChange={(event) => setCounty(event.target.value)} className={`${field} mb-5`}>
-                <option value="" disabled>Select county</option>
-                {counties.map((county) => <option key={county}>{county}</option>)}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="town" className={label}>Town / area</label>
-              <input id="town" name="town" type="text" required maxLength={100} placeholder="e.g. Lang'ata" className={`${field} mb-5`} />
-            </div>
-          </div>
+          {!isPickup && (
+            <>
+              <div>
+                <label htmlFor="deliveryDistanceBand" className={label}>Approximate distance from the shop</label>
+                <select
+                  id="deliveryDistanceBand"
+                  name="deliveryDistanceBand"
+                  required
+                  value={deliveryDistanceBand}
+                  onChange={(event) => setDeliveryDistanceBand(event.target.value)}
+                  className={`${field} mb-5`}
+                >
+                  <option value="" disabled>Select distance</option>
+                  {DELIVERY_DISTANCE_BANDS.map((band) => (
+                    <option key={band.value} value={band.value}>
+                      {band.label} · {formatKSh(total >= 5000 ? 0 : band.fee)}
+                    </option>
+                  ))}
+                </select>
+                {total >= 5000 && <p className="-mt-3 mb-5 text-sm font-bold text-purple-vivid">Your order qualifies for free delivery.</p>}
+              </div>
 
-          <label htmlFor="address" className={label}>Delivery address</label>
-          <textarea id="address" name="address" rows={4} required maxLength={500} placeholder="Building, street, landmark" className={`${field} mb-5 resize-y`} />
+              <div className="grid gap-x-5 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="county" className={label}>County</label>
+                  <select id="county" name="county" required value={county} onChange={(event) => setCounty(event.target.value)} className={`${field} mb-5`}>
+                    <option value="" disabled>Select county</option>
+                    {counties.map((county) => <option key={county}>{county}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="town" className={label}>Town / area</label>
+                  <input id="town" name="town" type="text" required maxLength={100} placeholder="e.g. Lang'ata" className={`${field} mb-5`} />
+                </div>
+              </div>
+
+              <label htmlFor="address" className={label}>Delivery address</label>
+              <textarea id="address" name="address" rows={4} required maxLength={500} placeholder="Building, street, landmark" className={`${field} mb-5 resize-y`} />
+            </>
+          )}
 
           <fieldset className="mb-7 rounded-2xl border border-purple-mid/40 bg-purple-tint p-4">
             <legend className="px-1 font-bold">Choose payment method</legend>
@@ -291,13 +335,15 @@ export default function Checkout() {
             </label>
             <label className="mt-1 flex cursor-pointer items-start gap-3 rounded-xl p-2">
               <input type="radio" name="paymentMethod" value="cash_on_delivery" checked={paymentMethod === "cash_on_delivery"} onChange={() => setPaymentMethod("cash_on_delivery")} disabled={submitting} className="mt-1 accent-purple-deep" />
-              <span><strong>Cash on delivery</strong><span className="block text-sm leading-6 text-ink/65">Pay the delivery person in cash when your order arrives.</span></span>
+              <span><strong>{isPickup ? "Cash on pickup" : "Cash on delivery"}</strong><span className="block text-sm leading-6 text-ink/65">{isPickup ? "Pay in cash when you collect your order." : "Pay the delivery person in cash when your order arrives."}</span></span>
             </label>
-            {county && (
+            {isPickup ? (
+              <p className="mt-2 text-sm font-bold">Free shop pickup · {BUSINESS_LOCATION}</p>
+            ) : deliveryDistanceBand && (
               <p className="mt-2 text-sm font-bold">
-                {total >= 5000 ? "Free delivery" : `From ${formatKSh(deliveryFee)} estimated delivery`}
+                {total >= 5000 ? "Free delivery" : `${formatKSh(deliveryFee)} estimated delivery`}
                 <span className="ml-1 font-normal text-ink/60">
-                  · {county === "Nairobi" ? DELIVERY_ESTIMATE_NAIROBI : DELIVERY_ESTIMATE_OTHER}
+                  · {selectedDistanceBand?.estimate}
                 </span>
               </p>
             )}
@@ -305,7 +351,7 @@ export default function Checkout() {
 
           <button
             type="submit"
-            disabled={submitting || !isSupabaseConfigured}
+            disabled={submitting || !isSupabaseConfigured || (!isPickup && !deliveryDistanceBand)}
             className="w-full rounded-full bg-purple-deep py-4 text-lg font-bold text-purple-tint transition-colors hover:bg-purple-vivid disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Placing order…" : `Place order · ${formatKSh(orderTotal)}`}
@@ -336,7 +382,7 @@ export default function Checkout() {
           </ul>
           <div className="mt-5 space-y-2 border-t border-purple-mid/50 pt-5">
             <div className="flex justify-between text-sm"><span>Subtotal</span><span>{formatKSh(total)}</span></div>
-            <div className="flex justify-between text-sm"><span>Delivery</span><span>{deliveryFee == null ? "Select county" : deliveryFee === 0 ? "Free" : formatKSh(deliveryFee)}</span></div>
+            <div className="flex justify-between text-sm"><span>{isPickup ? "Pickup" : "Delivery"}</span><span>{deliveryFee == null ? "Select distance" : deliveryFee === 0 ? "Free" : formatKSh(deliveryFee)}</span></div>
             <div className="flex items-center justify-between text-lg pt-2">
               <span>Total</span>
               <strong className="font-display text-2xl font-extrabold">{formatKSh(orderTotal)}</strong>

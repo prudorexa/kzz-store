@@ -30,7 +30,7 @@ Deno.serve(async (request) => {
     );
     const { data, error } = await database
       .from("orders")
-      .select("id,order_number,payment_method,payment_status,fulfillment_status,total_ksh,mpesa_result_description,created_at,order_items(product_name,size,color,quantity,unit_price_ksh)")
+      .select("id,order_number,payment_method,payment_status,fulfillment_status,fulfillment_method,delivery_distance_band,town,delivery_address,total_ksh,mpesa_result_description,created_at,order_items(product_name,size,color,quantity,unit_price_ksh)")
       .eq("order_number", orderNumber)
       .eq("access_token", accessToken)
       .maybeSingle();
@@ -56,6 +56,10 @@ Deno.serve(async (request) => {
       status: data.payment_status,
       paymentStatus: data.payment_status,
       fulfillmentStatus: data.fulfillment_status,
+      fulfillmentMethod: data.fulfillment_method,
+      deliveryDistanceBand: data.delivery_distance_band,
+      town: data.town,
+      deliveryAddress: data.delivery_address,
       total: data.total_ksh,
       message: data.mpesa_result_description,
       createdAt: data.created_at,

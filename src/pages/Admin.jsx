@@ -113,6 +113,7 @@ export default function Admin() {
   const [ordersError, setOrdersError] = useState("");
   const [ordersNotice, setOrdersNotice] = useState("");
   const [ordersSearch, setOrdersSearch] = useState("");
+  const [clearingOrders, setClearingOrders] = useState(false);
   const ordersSearchValue = ordersSearch.trim().toLowerCase();
   const filteredOrders = orders.filter((order) => {
     if (!ordersSearchValue) return true;
@@ -647,6 +648,31 @@ export default function Admin() {
     setOrdersNotice(`${orderNumber} was cancelled and its stock was restored.`);
   }
 
+  async function clearOrders() {
+    const confirmation = window.prompt(
+      "This permanently deletes every order and its order items, including paid orders. It does not refund payments or change products or stock quantities. Type DELETE ORDERS to continue."
+    );
+    if (confirmation !== "DELETE ORDERS") return;
+
+    setOrdersError("");
+    setOrdersNotice("");
+    setClearingOrders(true);
+    try {
+      const { data: deletedCount, error: clearError } = await supabase.rpc("clear_store_orders");
+      if (clearError) {
+        setOrdersError(clearError.message);
+        return;
+      }
+
+      setOrders([]);
+      setOrdersNotice(`${deletedCount} orders deleted. Products and stock quantities were left unchanged.`);
+    } catch (clearError) {
+      setOrdersError(clearError.message || "Could not delete orders.");
+    } finally {
+      setClearingOrders(false);
+    }
+  }
+
   async function removeProduct(product) {
     if (!window.confirm(`Remove "${product.name}" from the shop?`)) return;
     if (isSupabaseConfigured) {
@@ -932,6 +958,24 @@ export default function Admin() {
           <section className="space-y-4">
             {ordersError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{ordersError}</p>}
             {ordersNotice && <p role="status" className="rounded-xl bg-purple-soft px-4 py-3 text-sm text-ink/75">{ordersNotice}</p>}
+            {isSupabaseConfigured && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-coral/40 bg-blush/30 p-4">
+                <div>
+                  <p className="font-bold">Clear test orders</p>
+                  <p className="mt-1 text-sm text-ink/65">
+                    Permanently remove all orders and their items. Products and stock stay unchanged; this does not refund payments.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearOrders}
+                  disabled={clearingOrders || ordersLoading}
+                  className="rounded-full border border-coral/50 px-4 py-2 text-sm font-bold text-coral hover:bg-blush/60 disabled:opacity-50"
+                >
+                  {clearingOrders ? "Deleting orders…" : "Delete all orders"}
+                </button>
+              </div>
+            )}
             <label className="block rounded-2xl border border-purple-mid/40 bg-purple-tint p-4 text-sm font-bold">
               Search orders
               <input

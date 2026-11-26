@@ -77,22 +77,32 @@ export default function OrderTracking() {
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/55">Payment</p>
                 <p className="mt-1 font-display text-xl font-extrabold">
                   {order.paymentMethod === "cash_on_delivery" && order.paymentStatus === "pending"
-                    ? "Cash due on delivery"
+                    ? order.fulfillmentMethod === "pickup" ? "Cash due on pickup" : "Cash due on delivery"
                     : order.paymentStatus}
                 </p>
                 {order.message && <p className="mt-1 text-sm text-ink/65">{order.message}</p>}
               </div>
               <div className="rounded-2xl bg-purple-soft p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/55">Delivery</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/55">
+                  {order.fulfillmentMethod === "pickup" ? "Pickup" : "Delivery"}
+                </p>
                 <p className="mt-1 font-display text-xl font-extrabold">
                   {order.fulfillmentStatus === "awaiting_payment"
                     ? "Waiting for payment"
+                    : order.fulfillmentMethod === "pickup"
+                    ? "Shop collection"
                     : ORDER_FULFILLMENT_STATUSES[currentStep]?.label || "Processing"}
                 </p>
               </div>
             </div>
 
-            {(order.estimatedDeliveryDate || order.courierName || courierTrackingUrl) && (
+            {order.fulfillmentMethod === "pickup" ? (
+              <div className="mt-5 rounded-2xl bg-purple-soft p-5">
+                <h2 className="font-display text-lg font-extrabold">Pickup details</h2>
+                <p className="mt-2 text-sm">Collect your order from <strong>{order.deliveryAddress}</strong>.</p>
+                <p className="mt-1 text-sm text-ink/65">We’ll contact you when it’s ready for collection.</p>
+              </div>
+            ) : (order.estimatedDeliveryDate || order.courierName || courierTrackingUrl) && (
               <div className="mt-5 rounded-2xl bg-purple-soft p-5">
                 <h2 className="font-display text-lg font-extrabold">Delivery details</h2>
                 {order.estimatedDeliveryDate && (

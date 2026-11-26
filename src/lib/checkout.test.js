@@ -2,14 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateDeliveryFee,
+  DELIVERY_DISTANCE_BANDS,
   normalizeKenyanPhone,
 } from "./checkout.js";
 
-test("calculates Nairobi and out-of-Nairobi delivery fees", () => {
-  assert.equal(calculateDeliveryFee("Nairobi", 4999), 250);
-  assert.equal(calculateDeliveryFee("Mombasa", 4999), 350);
-  assert.equal(calculateDeliveryFee("Nairobi", 5000), 0);
-  assert.equal(calculateDeliveryFee("", 1000), null);
+test("calculates delivery fees by distance and makes pickup free", () => {
+  assert.deepEqual(
+    DELIVERY_DISTANCE_BANDS.map(({ value }) => calculateDeliveryFee("delivery", value, 1000)),
+    [100, 150, 250, 350],
+  );
+  assert.equal(calculateDeliveryFee("delivery", "up_to_5_km", 5000), 0);
+  assert.equal(calculateDeliveryFee("pickup", null, 1000), 0);
+  assert.equal(calculateDeliveryFee("delivery", null, 1000), null);
+  assert.equal(calculateDeliveryFee("delivery", "unknown", 1000), null);
 });
 
 test("normalizes Kenyan M-Pesa phone formats", () => {

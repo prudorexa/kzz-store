@@ -4,8 +4,6 @@ import { useCart } from "../context/CartContext.jsx";
 import { formatKSh } from "../lib/format.js";
 import ProductPrice from "./ProductPrice.jsx";
 import {
-  DELIVERY_FEE_NAIROBI,
-  DELIVERY_FEE_OTHER,
   FREE_DELIVERY_THRESHOLD,
 } from "../lib/checkout.js";
 
@@ -123,7 +121,7 @@ export default function CartDrawer() {
           {items.length > 0 && (
             <div className="mb-4 rounded-2xl bg-purple-soft p-3 text-sm">
               <p className="font-medium">
-                Delivery: {formatKSh(DELIVERY_FEE_NAIROBI)} Nairobi · {formatKSh(DELIVERY_FEE_OTHER)} other counties
+                Delivery from {formatKSh(100)} based on distance · Free shop pickup
               </p>
               {remainingForFreeDelivery > 0 ? (
                 <p className="mt-1">Add <strong>{formatKSh(remainingForFreeDelivery)}</strong> more for free delivery.</p>

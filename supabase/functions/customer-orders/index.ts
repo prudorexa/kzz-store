@@ -31,7 +31,7 @@ Deno.serve(async (request) => {
     const escapedEmail = email.replace(/[\\%_]/g, "\\$&");
     const { data, error } = await database
       .from("orders")
-      .select("order_number,access_token,payment_method,payment_status,fulfillment_status,estimated_delivery_date,courier_name,courier_tracking_url,total_ksh,created_at,order_items(product_name,size,color,quantity,unit_price_ksh)")
+      .select("order_number,access_token,payment_method,payment_status,fulfillment_status,fulfillment_method,delivery_distance_band,delivery_address,estimated_delivery_date,courier_name,courier_tracking_url,total_ksh,created_at,order_items(product_name,size,color,quantity,unit_price_ksh)")
       .ilike("email", escapedEmail)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -44,6 +44,9 @@ Deno.serve(async (request) => {
         paymentMethod: order.payment_method,
         paymentStatus: order.payment_status,
         fulfillmentStatus: order.fulfillment_status,
+        fulfillmentMethod: order.fulfillment_method,
+        deliveryDistanceBand: order.delivery_distance_band,
+        deliveryAddress: order.delivery_address,
         estimatedDeliveryDate: order.estimated_delivery_date,
         courierName: order.courier_name,
         courierTrackingUrl: order.courier_tracking_url,

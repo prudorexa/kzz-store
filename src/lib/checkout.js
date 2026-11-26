@@ -1,13 +1,16 @@
-export const DELIVERY_FEE_NAIROBI = 250;
-export const DELIVERY_FEE_OTHER = 350;
 export const FREE_DELIVERY_THRESHOLD = 5000;
-export const DELIVERY_ESTIMATE_NAIROBI = "1–2 working days";
-export const DELIVERY_ESTIMATE_OTHER = "2–5 working days";
+export const DELIVERY_DISTANCE_BANDS = [
+  { value: "up_to_5_km", label: "Up to 5 km", fee: 100, estimate: "Same or next day" },
+  { value: "5_to_10_km", label: "5–10 km", fee: 150, estimate: "Same or next day" },
+  { value: "10_to_20_km", label: "10–20 km", fee: 250, estimate: "1–2 working days" },
+  { value: "over_20_km", label: "Over 20 km", fee: 350, estimate: "2–5 working days" },
+];
 
-export function calculateDeliveryFee(county, subtotal) {
-  if (!county) return null;
+export function calculateDeliveryFee(fulfillmentMethod, distanceBand, subtotal) {
+  if (fulfillmentMethod === "pickup") return 0;
+  if (fulfillmentMethod !== "delivery" || !distanceBand) return null;
   if (subtotal >= FREE_DELIVERY_THRESHOLD) return 0;
-  return county === "Nairobi" ? DELIVERY_FEE_NAIROBI : DELIVERY_FEE_OTHER;
+  return DELIVERY_DISTANCE_BANDS.find((band) => band.value === distanceBand)?.fee ?? null;
 }
 
 export function normalizeKenyanPhone(value) {

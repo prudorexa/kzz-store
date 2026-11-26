@@ -7,12 +7,10 @@ import { formatKSh } from "../lib/format.js";
 import ProductPrice from "../components/ProductPrice.jsx";
 import { WHATSAPP_NUMBER } from "../lib/contact.js";
 import {
-  DELIVERY_ESTIMATE_NAIROBI,
-  DELIVERY_ESTIMATE_OTHER,
-  DELIVERY_FEE_NAIROBI,
-  DELIVERY_FEE_OTHER,
+  DELIVERY_DISTANCE_BANDS,
   FREE_DELIVERY_THRESHOLD,
 } from "../lib/checkout.js";
+import { BUSINESS_LOCATION } from "../lib/business.js";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -161,9 +159,10 @@ export default function ProductDetail() {
             {product.careInstructions && <p><strong>Care:</strong> {product.careInstructions}</p>}
             {!product.description && <p><strong>Comfort first:</strong> Easy-to-wear fabric and colours made for everyday play.</p>}
             <p>
-              <strong>Delivery:</strong> {formatKSh(DELIVERY_FEE_NAIROBI)} in Nairobi, {formatKSh(DELIVERY_FEE_OTHER)} in other counties; free on orders of {formatKSh(FREE_DELIVERY_THRESHOLD)} or more.
+              <strong>Delivery:</strong> From {formatKSh(DELIVERY_DISTANCE_BANDS[0].fee)}, based on distance from our shop. Free on orders of {formatKSh(FREE_DELIVERY_THRESHOLD)} or more.
             </p>
-            <p><strong>Estimated arrival:</strong> {DELIVERY_ESTIMATE_NAIROBI} in Nairobi and {DELIVERY_ESTIMATE_OTHER} elsewhere.</p>
+            <p><strong>Distance estimates:</strong> {DELIVERY_DISTANCE_BANDS.map((band) => `${band.label} ${formatKSh(band.fee)}`).join(" · ")}.</p>
+            <p><strong>Free pickup:</strong> Collect from {BUSINESS_LOCATION}.</p>
             <p><strong>Fit:</strong> Choose the closest age size or size up for a comfortable fit.</p>
           </div>
         </div>

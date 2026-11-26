@@ -193,6 +193,7 @@ export default function MyOrders() {
                   const fulfillment = ORDER_FULFILLMENT_STATUSES.find(
                     (status) => status.value === order.fulfillmentStatus
                   )?.label || "Processing";
+                  const pickup = order.fulfillmentMethod === "pickup";
                   const courierTrackingUrl = getSafeTrackingUrl(order.courierTrackingUrl);
                   const trackingUrl = `/track/${encodeURIComponent(order.orderNumber)}#${encodeURIComponent(order.accessToken)}`;
                   return (
@@ -208,14 +209,17 @@ export default function MyOrders() {
                           <p className="font-bold">{formatKSh(order.total)}</p>
                           <p className="mt-1 text-sm text-ink/70">
                             {order.paymentMethod === "cash_on_delivery" && order.paymentStatus === "pending"
-                              ? "Cash due on delivery"
+                              ? pickup ? "Cash due on pickup" : "Cash due on delivery"
                               : order.paymentStatus}
                           </p>
                         </div>
                       </div>
                       <p className="mt-4 text-sm">
-                        Delivery: <strong>{order.fulfillmentStatus === "awaiting_payment" ? "Waiting for payment" : fulfillment}</strong>
+                        {pickup ? "Pickup" : "Delivery"}: <strong>{order.fulfillmentStatus === "awaiting_payment" ? "Waiting for payment" : pickup ? "Shop collection" : fulfillment}</strong>
                       </p>
+                      {pickup && order.deliveryAddress && (
+                        <p className="mt-2 text-sm text-ink/70">Collect from <strong>{order.deliveryAddress}</strong>.</p>
+                      )}
                       {(order.estimatedDeliveryDate || order.courierName || courierTrackingUrl) && (
                         <div className="mt-2 text-sm text-ink/70">
                           {order.estimatedDeliveryDate && (
@@ -238,7 +242,7 @@ export default function MyOrders() {
                         ))}
                       </ul>
                       <Link to={trackingUrl} className="mt-4 inline-block font-bold text-purple-vivid underline">
-                        View delivery tracking
+                        View order tracking
                       </Link>
                     </li>
                   );
